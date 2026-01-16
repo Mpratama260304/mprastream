@@ -6,7 +6,6 @@
   <title>Login - StreamFlow</title>
   <link rel="icon" href="/images/logo.svg" type="image/svg+xml">
   <link rel="preload" href="/images/logo.svg" as="image" type="image/svg+xml">
-  <link rel="alternate icon" href="/images/favicon.ico" type="image/x-icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -54,7 +53,7 @@
               class="sf-input pr-12"
               placeholder="Enter your password" required>
             <i class="ti ti-lock absolute left-3 top-1/2 -translate-y-1/2 text-purple-400/70"></i>
-            <button type="button" onclick="togglePasswordVisibility()"
+            <button type="button" id="passwordToggleBtn"
               class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-400 hover:text-purple-300 transition-colors">
               <i class="ti ti-eye text-base" id="passwordToggle"></i>
             </button>
@@ -86,21 +85,22 @@
       icons.forEach(icon => {
         icon.classList.add('font-loaded');
       });
-    });
 
-    function togglePasswordVisibility() {
-      const password = document.getElementById('password');
-      const passwordToggle = document.getElementById('passwordToggle');
-      if (password.type === 'password') {
-        password.type = 'text';
-        passwordToggle.classList.remove('ti-eye');
-        passwordToggle.classList.add('ti-eye-off');
-      } else {
-        password.type = 'password';
-        passwordToggle.classList.remove('ti-eye-off');
-        passwordToggle.classList.add('ti-eye');
-      }
-    }
+      // Password visibility toggle handler
+      document.getElementById('passwordToggleBtn').addEventListener('click', function() {
+        const password = document.getElementById('password');
+        const passwordToggle = document.getElementById('passwordToggle');
+        if (password.type === 'password') {
+          password.type = 'text';
+          passwordToggle.classList.remove('ti-eye');
+          passwordToggle.classList.add('ti-eye-off');
+        } else {
+          password.type = 'password';
+          passwordToggle.classList.remove('ti-eye-off');
+          passwordToggle.classList.add('ti-eye');
+        }
+      });
+    });
   </script>
 </body>
 </html>

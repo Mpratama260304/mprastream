@@ -60,11 +60,12 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net", "https://www.google.com", "https://www.gstatic.com"],
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       mediaSrc: ["'self'", "blob:"],
-      connectSrc: ["'self'", "https://api.github.com", "https://donate.youtube101.id"],
+      connectSrc: ["'self'", "https://api.github.com", "https://donate.youtube101.id", "https://cdn.jsdelivr.net"],
       frameSrc: ["'self'", "https://www.google.com"],
       workerSrc: ["'self'", "blob:"]
     }

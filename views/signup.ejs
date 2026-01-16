@@ -6,7 +6,6 @@
   <title>Sign Up - StreamFlow</title>
   <link rel="icon" href="/images/logo.svg" type="image/svg+xml">
   <link rel="preload" href="/images/logo.svg" as="image" type="image/svg+xml">
-  <link rel="alternate icon" href="/images/favicon.ico" type="image/x-icon">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -60,8 +59,7 @@
                   class="flex items-center justify-center w-8 h-8 rounded-full sf-btn-primary cursor-pointer shadow-lg">
                   <i class="ti ti-camera text-white"></i>
                 </label>
-                <input id="avatar-upload" name="avatar" type="file" accept="image/*" class="hidden"
-                  onchange="previewAvatar(event)">
+                <input id="avatar-upload" name="avatar" type="file" accept="image/*" class="hidden">
               </div>
             </div>
             <p class="text-xs text-gray-400 mt-2">Upload a profile picture</p>
@@ -82,9 +80,9 @@
             <div class="relative">
               <input type="password" id="password" name="password"
                 class="sf-input pr-12"
-                placeholder="Create a password" required minlength="6" onkeyup="checkPasswordStrength()">
+                placeholder="Create a password" required minlength="6">
               <i class="ti ti-lock absolute left-3 top-1/2 -translate-y-1/2 text-purple-400/70"></i>
-              <button type="button" onclick="togglePasswordVisibility('password', 'passwordToggle')"
+              <button type="button" id="passwordToggleBtn"
                 class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-400 hover:text-purple-300 transition-colors">
                 <i class="ti ti-eye text-base" id="passwordToggle"></i>
               </button>
@@ -105,9 +103,9 @@
             <div class="relative">
               <input type="password" id="confirmPassword" name="confirmPassword"
                 class="sf-input pr-12"
-                placeholder="Confirm your password" required onkeyup="checkPasswordMatch()">
+                placeholder="Confirm your password" required>
               <i class="ti ti-lock-check absolute left-3 top-1/2 -translate-y-1/2 text-purple-400/70"></i>
-              <button type="button" onclick="togglePasswordVisibility('confirmPassword', 'confirmPasswordToggle')"
+              <button type="button" id="confirmPasswordToggleBtn"
                 class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center text-gray-400 hover:text-purple-300 transition-colors">
                 <i class="ti ti-eye text-base" id="confirmPasswordToggle"></i>
               </button>
@@ -144,19 +142,37 @@
       icons.forEach(icon => {
         icon.classList.add('font-loaded');
       });
-    });
 
-    function previewAvatar(event) {
-      const input = event.target;
-      if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const preview = document.getElementById('avatar-preview');
-          preview.innerHTML = `<img src="${e.target.result}" class="w-full h-full object-cover">`;
-        };
-        reader.readAsDataURL(input.files[0]);
-      }
-    }
+      // Avatar preview handler
+      document.getElementById('avatar-upload').addEventListener('change', function(event) {
+        const input = event.target;
+        if (input.files && input.files[0]) {
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            const preview = document.getElementById('avatar-preview');
+            preview.innerHTML = '<img src="' + e.target.result + '" class="w-full h-full object-cover">';
+          };
+          reader.readAsDataURL(input.files[0]);
+        }
+      });
+
+      // Password visibility toggle handlers
+      document.getElementById('passwordToggleBtn').addEventListener('click', function() {
+        togglePasswordVisibility('password', 'passwordToggle');
+      });
+
+      document.getElementById('confirmPasswordToggleBtn').addEventListener('click', function() {
+        togglePasswordVisibility('confirmPassword', 'confirmPasswordToggle');
+      });
+
+      // Password strength handler
+      document.getElementById('password').addEventListener('keyup', checkPasswordStrength);
+      document.getElementById('password').addEventListener('input', checkPasswordStrength);
+
+      // Confirm password match handler
+      document.getElementById('confirmPassword').addEventListener('keyup', checkPasswordMatch);
+      document.getElementById('confirmPassword').addEventListener('input', checkPasswordMatch);
+    });
 
     function togglePasswordVisibility(inputId, toggleId) {
       const input = document.getElementById(inputId);
@@ -191,7 +207,7 @@
       if (password.match(/[A-Z]/)) strength++;
       if (password.match(/[0-9]/) || password.match(/[^a-zA-Z0-9]/)) strength++;
       
-      bars.forEach((bar, index) => {
+      bars.forEach(function(bar, index) {
         const element = document.getElementById(bar);
         if (index < strength) {
           if (strength <= 1) {
