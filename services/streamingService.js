@@ -1,5 +1,6 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
+const fsPromises = require('fs').promises;
 const path = require('path');
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg');
 const { v4: uuidv4 } = require('uuid');
@@ -102,15 +103,16 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   }
 
   const concatFile = path.join(tempDir, `playlist_${stream.id}.txt`);
-  let content = '';
-  const loopCount = stream.loop_video ? 10000 : 1;
   
-  for (let i = 0; i < loopCount; i++) {
-    for (const vp of videoPaths) {
-      content += `file '${vp.replace(/\\/g, '/')}'\n`;
-    }
+  // Write playlist content once - FFmpeg's -stream_loop handles looping
+  let content = '';
+  for (const vp of videoPaths) {
+    content += `file '${vp.replace(/\\/g, '/')}'\n`;
   }
-  fs.writeFileSync(concatFile, content);
+  await fsPromises.writeFile(concatFile, content);
+  
+  // Use -stream_loop -1 for infinite loop, 0 for no loop
+  const loopValue = stream.loop_video ? '-1' : '0';
 
   const hasAudio = playlist.audios && playlist.audios.length > 0;
 
@@ -122,6 +124,7 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
         '-re',
         '-fflags', '+genpts+igndts+discardcorrupt',
         '-avoid_negative_ts', 'make_zero',
+        '-stream_loop', loopValue,
         '-f', 'concat',
         '-safe', '0',
         '-i', concatFile,
@@ -144,6 +147,7 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
+      '-stream_loop', loopValue,
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFile,
@@ -184,13 +188,13 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
   }
 
   const audioConcatFile = path.join(tempDir, `playlist_audio_${stream.id}.txt`);
+  
+  // Write audio playlist once - FFmpeg handles looping
   let audioContent = '';
-  for (let i = 0; i < 10000; i++) {
-    for (const ap of audioPaths) {
-      audioContent += `file '${ap.replace(/\\/g, '/')}'\n`;
-    }
+  for (const ap of audioPaths) {
+    audioContent += `file '${ap.replace(/\\/g, '/')}'\n`;
   }
-  fs.writeFileSync(audioConcatFile, audioContent);
+  await fsPromises.writeFile(audioConcatFile, audioContent);
 
   if (!stream.use_advanced_settings) {
     return [
@@ -199,9 +203,11 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
       '-re',
       '-fflags', '+genpts+igndts+discardcorrupt',
       '-avoid_negative_ts', 'make_zero',
+      '-stream_loop', loopValue,
       '-f', 'concat',
       '-safe', '0',
       '-i', concatFile,
+      '-stream_loop', '-1',
       '-f', 'concat',
       '-safe', '0',
       '-i', audioConcatFile,
@@ -226,9 +232,11 @@ async function buildFFmpegArgsForPlaylist(stream, playlist) {
     '-re',
     '-fflags', '+genpts+igndts+discardcorrupt',
     '-avoid_negative_ts', 'make_zero',
+    '-stream_loop', loopValue,
     '-f', 'concat',
     '-safe', '0',
     '-i', concatFile,
+    '-stream_loop', '-1',
     '-f', 'concat',
     '-safe', '0',
     '-i', audioConcatFile,

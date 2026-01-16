@@ -9,6 +9,8 @@ if (!fs.existsSync(dbDir)) {
 
 require('./services/logger.js');
 const express = require('express');
+const helmet = require('helmet');
+const compression = require('compression');
 const engine = require('ejs-mate');
 const os = require('os');
 const multer = require('multer');
@@ -51,6 +53,34 @@ const app = express();
 app.set("trust proxy", 1);
 const port = process.env.PORT || 7575;
 const tokens = new csrf();
+
+// Security middleware
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com", "https://cdn.jsdelivr.net", "https://www.google.com", "https://www.gstatic.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdn.jsdelivr.net"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      mediaSrc: ["'self'", "blob:"],
+      connectSrc: ["'self'", "https://api.github.com", "https://donate.youtube101.id"],
+      frameSrc: ["'self'", "https://www.google.com"],
+      workerSrc: ["'self'", "blob:"]
+    }
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Compression middleware
+app.use(compression({
+  filter: (req, res) => {
+    if (req.headers['x-no-compression']) return false;
+    return compression.filter(req, res);
+  },
+  level: 6
+}));
 
 ensureDirectories();
 app.locals.helpers = {
@@ -188,8 +218,19 @@ app.use('/uploads', function (req, res, next) {
   res.header('Expires', '0');
   next();
 });
-app.use(express.urlencoded({ extended: true, limit: '50gb' }));
-app.use(express.json({ limit: '50gb' }));
+
+// Default body parser with reasonable limit (5MB)
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+app.use(express.json({ limit: '5mb' }));
+
+// Large body parser for upload routes only
+const largeBodyParser = express.json({ limit: '50gb' });
+const largeUrlEncodedParser = express.urlencoded({ extended: true, limit: '50gb' });
+
+// Apply large body parser to upload routes
+app.use('/api/upload', largeBodyParser, largeUrlEncodedParser);
+app.use('/api/videos', largeBodyParser, largeUrlEncodedParser);
+app.use('/api/audio', largeBodyParser, largeUrlEncodedParser);
 
 const csrfProtection = function (req, res, next) {
   if ((req.path === '/login' && req.method === 'POST') ||
