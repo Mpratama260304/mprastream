@@ -152,7 +152,7 @@ app.use(session({
     dir: path.join(__dirname, 'db'),
     table: 'sessions'
   }),
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || require('crypto').randomBytes(32).toString('hex'),
   resave: false,
   saveUninitialized: false,
   rolling: true,
