@@ -1,0 +1,5 @@
+run = ["bash","-lc","./replit-start.sh"]
+
+[[ports]]
+localPort = 7575
+externalPort = 80
