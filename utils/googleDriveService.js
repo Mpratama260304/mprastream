@@ -78,6 +78,7 @@ function extractCookies(response) {
 function parseConfirmationPage(html, fileId) {
   const urls = [];
   
+  // Extract download URL from various patterns in the confirmation page
   const formActionMatch = html.match(/action="([^"]+)"/);
   if (formActionMatch) {
     let formAction = formActionMatch[1].replace(/&amp;/g, '&');
@@ -102,16 +103,24 @@ function parseConfirmationPage(html, fileId) {
     }
   }
   
+  // Extract confirm token and uuid from the page
   const confirmMatch = html.match(/confirm=([0-9A-Za-z_-]+)/);
   const uuidMatch = html.match(/uuid=([0-9a-f-]+)/i);
+  const atMatch = html.match(/at=([^&"]+)/);
   
+  // Build URLs with extracted tokens
   let baseUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
   if (confirmMatch) baseUrl += `&confirm=${confirmMatch[1]}`;
   if (uuidMatch) baseUrl += `&uuid=${uuidMatch[1]}`;
+  if (atMatch) baseUrl += `&at=${atMatch[1]}`;
   urls.push(baseUrl);
   
+  // Additional URL patterns for different Google Drive versions
   urls.push(`https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`);
   urls.push(`https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`);
+  
+  // Try the direct download endpoint
+  urls.push(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=AIzaSyC1eQ1xj69IdTMeii5r7brs3R90eck-m7k`);
   
   return urls;
 }
@@ -126,16 +135,28 @@ async function tryDownloadFromUrl(url, cookies, commonHeaders) {
     headers: { 
       ...commonHeaders, 
       Cookie: cookies,
-      Referer: 'https://drive.google.com/'
+      Referer: 'https://drive.google.com/',
+      Origin: 'https://drive.google.com'
     },
     validateStatus: (status) => status < 500
   });
   
   const contentType = response.headers['content-type'] || '';
-  const isVideo = !contentType.includes('text/html') && 
-                  (contentType.includes('video') || 
-                   contentType.includes('octet-stream') ||
-                   contentType.includes('application/'));
+  const contentDisposition = response.headers['content-disposition'] || '';
+  const contentLength = parseInt(response.headers['content-length'] || '0');
+  
+  // Check if this is a real file download (not HTML)
+  const isVideo = (
+    // Content-Type indicates a file
+    (!contentType.includes('text/html') && 
+     (contentType.includes('video') || 
+      contentType.includes('octet-stream') ||
+      contentType.includes('application/'))) ||
+    // Has content-disposition header (file download)
+    contentDisposition.includes('attachment') ||
+    // Large content length suggests it's a real file
+    contentLength > 100000
+  );
   
   return { response, isVideo, contentType };
 }
@@ -162,10 +183,17 @@ async function downloadFile(fileId, progressCallback = null) {
     let originalFilename = null;
     
     const commonHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
-      'Connection': 'keep-alive'
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0'
     };
     
     console.log(`Starting download for file ID: ${fileId}`);
@@ -173,42 +201,54 @@ async function downloadFile(fileId, progressCallback = null) {
     originalFilename = await getFileMetadata(fileId);
     console.log(`Original filename from metadata: ${originalFilename}`);
     
+    // Build comprehensive list of download URLs to try
+    let downloadUrls = [
+      // New Google Drive usercontent domain (primary method)
+      `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`,
+      `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`,
+      // Legacy download URLs
+      `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`,
+      `https://drive.google.com/uc?export=download&id=${fileId}`,
+      // Direct file access
+      `https://drive.google.com/file/d/${fileId}/view?usp=download`,
+    ];
+    
+    // First, try to get cookies and any confirmation tokens from the view page
     const initialUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
     console.log(`Initial request: ${initialUrl}`);
     
-    const initialResponse = await axios.get(initialUrl, {
-      timeout: 30000,
-      maxRedirects: 5,
-      headers: commonHeaders,
-      validateStatus: (status) => status < 500
-    });
-    
-    cookies = extractCookies(initialResponse);
-    if (cookies) console.log('Cookies obtained');
-    
-    const initialContentType = initialResponse.headers['content-type'] || '';
-    const isInitialHtml = initialContentType.includes('text/html');
-    
-    let downloadUrls = [];
-    
-    if (isInitialHtml) {
-      console.log('Confirmation page detected, parsing download URLs...');
-      const html = typeof initialResponse.data === 'string' ? initialResponse.data : '';
-      downloadUrls = parseConfirmationPage(html, fileId);
-    } else {
-      downloadUrls = [initialUrl];
+    try {
+      const initialResponse = await axios.get(initialUrl, {
+        timeout: 30000,
+        maxRedirects: 5,
+        headers: commonHeaders,
+        validateStatus: (status) => status < 500
+      });
+      
+      cookies = extractCookies(initialResponse);
+      if (cookies) console.log('Cookies obtained');
+      
+      const initialContentType = initialResponse.headers['content-type'] || '';
+      const isInitialHtml = initialContentType.includes('text/html');
+      
+      if (isInitialHtml && typeof initialResponse.data === 'string') {
+        console.log('Confirmation page detected, parsing download URLs...');
+        const parsedUrls = parseConfirmationPage(initialResponse.data, fileId);
+        // Add parsed URLs at the beginning (higher priority)
+        downloadUrls = [...parsedUrls, ...downloadUrls.filter(u => !parsedUrls.includes(u))];
+      }
+    } catch (initError) {
+      console.log(`Initial request failed: ${initError.message}, continuing with default URLs`);
     }
     
-    downloadUrls.push(`https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`);
-    downloadUrls.push(`https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`);
-    
     let downloadSuccess = false;
+    let lastError = null;
     
     for (const url of downloadUrls) {
       if (downloadSuccess) break;
       
       try {
-        console.log(`Trying download URL...`);
+        console.log(`Trying download URL: ${url.substring(0, 80)}...`);
         const result = await tryDownloadFromUrl(url, cookies, commonHeaders);
         
         if (result.isVideo) {
@@ -218,9 +258,10 @@ async function downloadFile(fileId, progressCallback = null) {
         } else {
           cleanupStream(result.response);
           
+          // If we got an HTML response, try to parse it for new download URLs
           if (result.response.status === 200) {
             const chunks = [];
-            await new Promise((resolve, reject) => {
+            await new Promise((resolve) => {
               const timeout = setTimeout(() => {
                 result.response.data.destroy();
                 resolve();
@@ -228,7 +269,7 @@ async function downloadFile(fileId, progressCallback = null) {
               
               result.response.data.on('data', chunk => {
                 chunks.push(chunk);
-                if (Buffer.concat(chunks).length > 10000) {
+                if (Buffer.concat(chunks).length > 20000) {
                   clearTimeout(timeout);
                   result.response.data.destroy();
                   resolve();
@@ -245,22 +286,34 @@ async function downloadFile(fileId, progressCallback = null) {
             });
             
             const htmlContent = Buffer.concat(chunks).toString('utf8');
-            if (htmlContent.includes('confirm=') || htmlContent.includes('action=')) {
+            
+            // Check for virus scan warning or download anyway link
+            if (htmlContent.includes('download anyway') || htmlContent.includes('confirm=') || htmlContent.includes('action=')) {
               const newUrls = parseConfirmationPage(htmlContent, fileId);
               for (const newUrl of newUrls) {
                 if (!downloadUrls.includes(newUrl)) {
                   downloadUrls.push(newUrl);
+                  console.log('Found additional download URL from confirmation page');
                 }
               }
+            }
+            
+            // Check for error messages
+            if (htmlContent.includes('Sorry, you can') || htmlContent.includes('file does not exist')) {
+              lastError = new Error('File is not accessible. It may be private, deleted, or sharing is disabled.');
             }
           }
         }
       } catch (urlError) {
         console.log(`URL failed: ${urlError.message}`);
+        lastError = urlError;
       }
     }
     
     if (!downloadSuccess || !response) {
+      if (lastError && lastError.message) {
+        throw lastError;
+      }
       throw new Error('Could not download file from Google Drive. The file might be private, too large, or require special permissions. Please try downloading manually and uploading.');
     }
 
