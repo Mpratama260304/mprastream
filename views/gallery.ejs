@@ -263,7 +263,7 @@ function formatDuration(seconds) {
                 <span>Select files</span>
                 <input type="file" name="media" accept="video/mp4,video/avi,video/quicktime" multiple class="hidden" id="mediaFileInput">
               </label>
-              <p id="dropzoneFormats" class="text-gray-500 text-xs">Supported formats: MP4, AVI, MOV (max 50GB)</p>
+              <p id="dropzoneFormats" class="text-gray-500 text-xs">Supported formats: MP4, AVI, MOV (max <%= uploadLimits.maxVideoSizeGB %>GB)</p>
             </div>
           </div>
           <div id="selectedFileInfo" class="hidden">
@@ -415,7 +415,7 @@ function switchUploadTab(type) {
     tabAudio.className = 'flex-1 py-2 px-4 rounded-lg bg-dark-700 text-gray-400 hover:text-white transition-colors';
     dropzoneIcon.className = 'ti ti-video text-2xl text-gray-400';
     dropzoneText.textContent = 'Drag and drop video files here';
-    dropzoneFormats.textContent = 'Supported formats: MP4, AVI, MOV (max 50GB)';
+    dropzoneFormats.textContent = 'Supported formats: MP4, AVI, MOV (max ' + MAX_VIDEO_SIZE_GB + 'GB)';
     mediaFileInput.accept = 'video/mp4,video/avi,video/quicktime';
   } else {
     tabVideo.className = 'flex-1 py-2 px-4 rounded-lg bg-dark-700 text-gray-400 hover:text-white transition-colors';
@@ -847,7 +847,10 @@ function showImportProgress(jobId) {
 
 
 let selectedFiles = [];
-const CHUNK_SIZE = 50 * 1024 * 1024;
+// Upload limits from server config
+const MAX_VIDEO_SIZE_BYTES = <%= uploadLimits.maxVideoSizeBytes %>;
+const MAX_VIDEO_SIZE_GB = <%= uploadLimits.maxVideoSizeGB %>;
+const CHUNK_SIZE = <%= uploadLimits.chunkSizeBytes %>;
 
 function isAudioFile(file) {
   const audioTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/mp4', 'audio/x-m4a', 'audio/ogg', 'audio/flac', 'audio/x-flac'];
@@ -883,10 +886,9 @@ document.addEventListener('DOMContentLoaded', function() {
     mediaFileInput.addEventListener('change', function() {
       const newFiles = Array.from(this.files);
       if (newFiles.length > 0) {
-        const maxSize = 50 * 1024 * 1024 * 1024;
-        const large = newFiles.filter(f => f.size > maxSize);
+        const large = newFiles.filter(f => f.size > MAX_VIDEO_SIZE_BYTES);
         if (large.length > 0) {
-          showToast('error', `File too large: ${large.map(f => f.name).join(', ')}`);
+          showToast('error', `File too large (max ${MAX_VIDEO_SIZE_GB}GB): ${large.map(f => f.name).join(', ')}`);
           this.value = '';
           return;
         }
@@ -1130,6 +1132,13 @@ document.addEventListener('DOMContentLoaded', function() {
           return isAudioFile(f);
         });
         if (validFiles.length > 0) {
+          // Check max file size for each file
+          const tooLarge = validFiles.filter(f => f.size > MAX_VIDEO_SIZE_BYTES);
+          if (tooLarge.length > 0) {
+            showToast('error', `File too large (max ${MAX_VIDEO_SIZE_GB}GB): ${tooLarge.map(f => f.name).join(', ')}`);
+            return;
+          }
+          
           const totalNewSize = validFiles.reduce((sum, f) => sum + f.size, 0);
           const totalSelectedSize = selectedFiles.reduce((sum, f) => sum + f.size, 0);
           if (userDiskLimit > 0 && (userDiskUsage + totalSelectedSize + totalNewSize) > userDiskLimit) {

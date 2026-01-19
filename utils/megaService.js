@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { paths, getUniqueFilenameWithNumber } = require('./storage');
+const { MAX_VIDEO_SIZE_BYTES, getFileTooLargeMessage } = require('../config/uploadLimits');
 
 function extractFileInfo(megaUrl) {
   if (!megaUrl.includes('mega.nz') && !megaUrl.includes('mega.co.nz')) {
@@ -26,6 +27,11 @@ async function downloadFile(megaUrl, progressCallback = null) {
 
     console.log(`Original filename: ${originalFilename}`);
     console.log(`File size: ${totalSize} bytes`);
+    
+    // Check if file size exceeds max allowed size (MEGA provides size upfront)
+    if (totalSize > 0 && totalSize > MAX_VIDEO_SIZE_BYTES) {
+      throw new Error(getFileTooLargeMessage());
+    }
 
     let downloadedSize = 0;
     let lastProgress = 0;
@@ -35,6 +41,14 @@ async function downloadFile(megaUrl, progressCallback = null) {
 
     downloadStream.on('data', (chunk) => {
       downloadedSize += chunk.length;
+      
+      // Check if downloaded size exceeds max allowed size
+      if (downloadedSize > MAX_VIDEO_SIZE_BYTES) {
+        downloadStream.destroy();
+        writer.destroy();
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        throw new Error(getFileTooLargeMessage());
+      }
       if (totalSize > 0 && progressCallback) {
         const progress = Math.round((downloadedSize / totalSize) * 100);
         if (progress > lastProgress && progress <= 100) {
@@ -70,6 +84,13 @@ async function downloadFile(megaUrl, progressCallback = null) {
           if (fileSize < 1024) {
             fs.unlinkSync(tempPath);
             reject(new Error('Downloaded file is too small to be a valid video'));
+            return;
+          }
+          
+          // Validate final file size against max limit
+          if (fileSize > MAX_VIDEO_SIZE_BYTES) {
+            fs.unlinkSync(tempPath);
+            reject(new Error(getFileTooLargeMessage()));
             return;
           }
 

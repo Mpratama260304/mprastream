@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { paths, getUniqueFilenameWithNumber } = require('./storage');
+const { MAX_VIDEO_SIZE_BYTES, getFileTooLargeMessage, formatBytes } = require('../config/uploadLimits');
 
 function extractFileId(driveUrl) {
   let match = driveUrl.match(/\/file\/d\/([^\/]+)/);
@@ -276,6 +277,13 @@ async function downloadFile(fileId, progressCallback = null) {
     }
 
     const totalSize = parseInt(response.headers['content-length'] || '0');
+    
+    // Check if content-length exceeds max allowed size
+    if (totalSize > 0 && totalSize > MAX_VIDEO_SIZE_BYTES) {
+      cleanup();
+      throw new Error(getFileTooLargeMessage());
+    }
+    
     let downloadedSize = 0;
     let lastProgress = 0;
 
@@ -283,6 +291,12 @@ async function downloadFile(fileId, progressCallback = null) {
 
     response.data.on('data', (chunk) => {
       downloadedSize += chunk.length;
+      
+      // Check if downloaded size exceeds max allowed size
+      if (downloadedSize > MAX_VIDEO_SIZE_BYTES) {
+        cleanup();
+        throw new Error(getFileTooLargeMessage());
+      }
       
       if (totalSize > 0 && progressCallback) {
         const progress = Math.round((downloadedSize / totalSize) * 100);
@@ -335,6 +349,12 @@ async function downloadFile(fileId, progressCallback = null) {
 
           if (fileSize < 1024) {
             safeReject(new Error('Downloaded file is too small. Please check if the Google Drive link is correct.'));
+            return;
+          }
+          
+          // Validate final file size against max limit
+          if (fileSize > MAX_VIDEO_SIZE_BYTES) {
+            safeReject(new Error(getFileTooLargeMessage()));
             return;
           }
 

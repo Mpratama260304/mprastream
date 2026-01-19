@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { paths, getUniqueFilenameWithNumber } = require('./storage');
+const { MAX_VIDEO_SIZE_BYTES, getFileTooLargeMessage } = require('../config/uploadLimits');
 
 function extractFileKey(mediafireUrl) {
   let match = mediafireUrl.match(/mediafire\.com\/file\/([a-zA-Z0-9]+)/);
@@ -75,6 +76,12 @@ async function downloadFile(fileKey, progressCallback = null) {
     }
 
     const totalSize = parseInt(response.headers['content-length'] || '0');
+    
+    // Check if content-length exceeds max allowed size
+    if (totalSize > 0 && totalSize > MAX_VIDEO_SIZE_BYTES) {
+      throw new Error(getFileTooLargeMessage());
+    }
+    
     let downloadedSize = 0;
     let lastProgress = 0;
 
@@ -82,6 +89,14 @@ async function downloadFile(fileKey, progressCallback = null) {
 
     response.data.on('data', (chunk) => {
       downloadedSize += chunk.length;
+      
+      // Check if downloaded size exceeds max allowed size
+      if (downloadedSize > MAX_VIDEO_SIZE_BYTES) {
+        writer.destroy();
+        response.data.destroy();
+        if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+        throw new Error(getFileTooLargeMessage());
+      }
 
       if (totalSize > 0 && progressCallback) {
         const progress = Math.round((downloadedSize / totalSize) * 100);
@@ -118,6 +133,13 @@ async function downloadFile(fileKey, progressCallback = null) {
           if (fileSize < 1024) {
             fs.unlinkSync(tempPath);
             reject(new Error('Downloaded file is too small to be a valid video'));
+            return;
+          }
+          
+          // Validate final file size against max limit
+          if (fileSize > MAX_VIDEO_SIZE_BYTES) {
+            fs.unlinkSync(tempPath);
+            reject(new Error(getFileTooLargeMessage()));
             return;
           }
 

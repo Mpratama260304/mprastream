@@ -1,6 +1,7 @@
 const multer = require('multer');
 const path = require('path');
 const { getUniqueFilename, paths } = require('../utils/storage');
+const { MAX_VIDEO_SIZE_BYTES } = require('../config/uploadLimits');
 
 const videoStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -77,12 +78,14 @@ const imageFilter = (req, file, cb) => {
 
 const uploadVideo = multer({
   storage: videoStorage,
-  fileFilter: videoFilter
+  fileFilter: videoFilter,
+  limits: { fileSize: MAX_VIDEO_SIZE_BYTES }
 });
 
 const uploadAudio = multer({
   storage: audioStorage,
-  fileFilter: audioFilter
+  fileFilter: audioFilter,
+  limits: { fileSize: MAX_VIDEO_SIZE_BYTES }
 });
 
 const upload = multer({

@@ -1,8 +1,9 @@
 const fs = require('fs-extra');
 const path = require('path');
 const crypto = require('crypto');
+const { CHUNK_SIZE_BYTES } = require('../config/uploadLimits');
 
-const CHUNK_SIZE = 50 * 1024 * 1024;
+const CHUNK_SIZE = CHUNK_SIZE_BYTES;
 const TEMP_DIR = path.join(__dirname, '../public/uploads/temp');
 const INFO_DIR = path.join(__dirname, '../public/uploads/temp/info');
 const VIDEOS_DIR = path.join(__dirname, '../public/uploads/videos');

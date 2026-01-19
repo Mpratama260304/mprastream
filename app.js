@@ -27,6 +27,7 @@ const systemMonitor = require('./services/systemMonitor');
 const { uploadVideo, upload, uploadThumbnail, uploadAudio } = require('./middleware/uploadMiddleware');
 const chunkUploadService = require('./services/chunkUploadService');
 const audioConverter = require('./services/audioConverter');
+const uploadLimits = require('./config/uploadLimits');
 const { ensureDirectories } = require('./utils/storage');
 const { getVideoInfo, generateThumbnail, generateImageThumbnail } = require('./utils/videoProcessor');
 const Video = require('./models/Video');
@@ -225,8 +226,8 @@ app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 app.use(express.json({ limit: '5mb' }));
 
 // Large body parser for upload routes only
-const largeBodyParser = express.json({ limit: '50gb' });
-const largeUrlEncodedParser = express.urlencoded({ extended: true, limit: '50gb' });
+const largeBodyParser = express.json({ limit: uploadLimits.UPLOAD_BODY_LIMIT });
+const largeUrlEncodedParser = express.urlencoded({ extended: true, limit: uploadLimits.UPLOAD_BODY_LIMIT });
 
 // Apply large body parser to upload routes
 app.use('/api/upload', largeBodyParser, largeUrlEncodedParser);
@@ -754,7 +755,12 @@ app.get('/gallery', isAuthenticated, async (req, res) => {
       title: 'Video Gallery',
       active: 'gallery',
       user: await User.findById(req.session.userId),
-      videos: videos
+      videos: videos,
+      uploadLimits: {
+        maxVideoSizeBytes: uploadLimits.MAX_VIDEO_SIZE_BYTES,
+        maxVideoSizeGB: uploadLimits.MAX_VIDEO_SIZE_GB,
+        chunkSizeBytes: uploadLimits.CHUNK_SIZE_BYTES
+      }
     });
   } catch (error) {
     console.error('Gallery error:', error);
@@ -1546,7 +1552,7 @@ app.post('/api/videos/upload', isAuthenticated, (req, res, next) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ 
           success: false, 
-          error: 'File too large. Maximum size is 50GB.' 
+          error: uploadLimits.getFileTooLargeMessage() 
         });
       }
       if (err.code === 'LIMIT_UNEXPECTED_FILE') {
@@ -1687,7 +1693,7 @@ app.post('/api/audio/upload', isAuthenticated, (req, res, next) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ 
           success: false, 
-          error: 'File too large. Maximum size is 50GB.' 
+          error: uploadLimits.getFileTooLargeMessage() 
         });
       }
       return res.status(400).json({ 
@@ -1765,6 +1771,21 @@ app.post('/api/videos/chunk/init', isAuthenticated, async (req, res) => {
     if (!filename || !fileSize || !totalChunks) {
       return res.status(400).json({ success: false, error: 'Missing required fields' });
     }
+    
+    // Validate fileSize is a number
+    const parsedFileSize = parseInt(fileSize, 10);
+    if (isNaN(parsedFileSize) || parsedFileSize <= 0) {
+      return res.status(400).json({ success: false, error: 'Invalid file size' });
+    }
+    
+    // Validate file size against max limit
+    if (uploadLimits.isFileTooLarge(parsedFileSize)) {
+      return res.status(413).json({ 
+        success: false, 
+        error: uploadLimits.getFileTooLargeMessage() 
+      });
+    }
+    
     const allowedExts = ['.mp4', '.avi', '.mov'];
     const ext = path.extname(filename).toLowerCase();
     if (!allowedExts.includes(ext)) {
@@ -1797,7 +1818,7 @@ app.post('/api/videos/chunk/init', isAuthenticated, async (req, res) => {
   }
 });
 
-app.post('/api/videos/chunk/upload', isAuthenticated, express.raw({ type: 'application/octet-stream', limit: '60mb' }), async (req, res) => {
+app.post('/api/videos/chunk/upload', isAuthenticated, express.raw({ type: 'application/octet-stream', limit: uploadLimits.CHUNK_BODY_LIMIT }), async (req, res) => {
   try {
     const uploadId = req.headers['x-upload-id'];
     const chunkIndex = parseInt(req.headers['x-chunk-index'], 10);
